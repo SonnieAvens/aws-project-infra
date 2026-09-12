@@ -43,6 +43,20 @@ output "rds_db_name" {
   value       = aws_db_instance.postgresql.db_name
 }
 
+output "pg_cluster_private_ips" {
+  description = "Private IPs of the PostgreSQL cluster nodes"
+  value = {
+    primary   = aws_instance.pg_cluster[0].private_ip
+    replica_1 = aws_instance.pg_cluster[1].private_ip
+    replica_2 = aws_instance.pg_cluster[2].private_ip
+  }
+}
+
+output "pg_cluster_instance_ids" {
+  description = "Instance IDs of the PostgreSQL cluster nodes"
+  value       = aws_instance.pg_cluster[*].id
+}
+
 output "rds_secret_arn" {
   description = "ARN of the Secrets Manager secret holding RDS credentials"
   value       = aws_secretsmanager_secret.rds.arn

@@ -40,6 +40,12 @@ variable "db_username" {
   default     = "dbadmin"
 }
 
+variable "pg_cluster_instance_type" {
+  description = "EC2 instance type for PostgreSQL cluster nodes"
+  type        = string
+  default     = "t3.medium"
+}
+
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string
