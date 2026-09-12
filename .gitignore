@@ -1,0 +1,24 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+tfplan
+terraform.tfvars
+*.auto.tfvars
+
+# Lambda build artifact
+src/lambda_function.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
