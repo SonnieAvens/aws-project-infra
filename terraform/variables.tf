@@ -40,12 +40,6 @@ variable "db_username" {
   default     = "dbadmin"
 }
 
-variable "db_password" {
-  description = "RDS master password (store in GitHub Secrets, never commit)"
-  type        = string
-  sensitive   = true
-}
-
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string

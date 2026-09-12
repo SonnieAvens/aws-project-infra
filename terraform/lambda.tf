@@ -26,6 +26,24 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
+# Allow Lambda to read RDS credentials from Secrets Manager
+resource "aws_iam_role_policy" "lambda_secrets" {
+  name = "${var.project_name}-lambda-secrets-policy"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ]
+      Resource = aws_secretsmanager_secret.rds.arn
+    }]
+  })
+}
+
 ############################
 # Security Group
 ############################
@@ -75,6 +93,7 @@ resource "aws_lambda_function" "list_resources" {
     variables = {
       AWS_REGION_NAME = var.aws_region
       PROJECT_NAME    = var.project_name
+      DB_SECRET_ARN   = aws_secretsmanager_secret.rds.arn
     }
   }
 

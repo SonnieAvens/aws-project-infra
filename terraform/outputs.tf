@@ -43,6 +43,16 @@ output "rds_db_name" {
   value       = aws_db_instance.postgresql.db_name
 }
 
+output "rds_secret_arn" {
+  description = "ARN of the Secrets Manager secret holding RDS credentials"
+  value       = aws_secretsmanager_secret.rds.arn
+}
+
+output "rds_secret_name" {
+  description = "Name of the Secrets Manager secret holding RDS credentials"
+  value       = aws_secretsmanager_secret.rds.name
+}
+
 output "lambda_function_name" {
   description = "Lambda function name"
   value       = aws_lambda_function.list_resources.function_name

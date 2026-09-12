@@ -79,11 +79,8 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="aws_region=${{ env.AWS_REGION }}" \
             -out=tfplan
-        env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
 
       # ---------------------------------------------------------------
       # Apply only on push to main (not on PRs)
