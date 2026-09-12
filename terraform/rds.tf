@@ -75,14 +75,20 @@ resource "aws_secretsmanager_secret_version" "rds" {
 }
 
 ############################
+# Auto-detect latest available PostgreSQL 17 version
+############################
+data "aws_rds_engine_version" "postgresql" {
+  engine             = "postgres"
+  preferred_versions = ["17.5", "17.4", "17.3", "17.2", "17.1", "17.0"]
+}
+
+############################
 # RDS PostgreSQL 17
-# To list available versions:
-#   aws rds describe-db-engine-versions --engine postgres --query "DBEngineVersions[?starts_with(EngineVersion,'17')]"
 ############################
 resource "aws_db_instance" "postgresql" {
   identifier        = "${var.project_name}-postgres"
   engine            = "postgres"
-  engine_version    = var.db_engine_version
+  engine_version    = data.aws_rds_engine_version.postgresql.version
   instance_class    = var.db_instance_class
   allocated_storage = 20
   storage_type      = "gp3"
