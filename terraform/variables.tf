@@ -7,37 +7,13 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name used as prefix for all resource names"
   type        = string
-  default     = "myproject"
+  default     = "pg-cluster"
 }
 
 variable "environment" {
-  description = "Deployment environment (dev / staging / prod)"
+  description = "Deployment environment"
   type        = string
   default     = "dev"
-}
-
-variable "ec2_instance_type" {
-  description = "EC2 instance type"
-  type        = string
-  default     = "t3.micro"
-}
-
-variable "ec2_key_name" {
-  description = "Name of an existing EC2 key pair for SSH access (leave empty to skip)"
-  type        = string
-  default     = ""
-}
-
-variable "db_name" {
-  description = "Initial database name"
-  type        = string
-  default     = "appdb"
-}
-
-variable "db_username" {
-  description = "RDS master username"
-  type        = string
-  default     = "dbadmin"
 }
 
 variable "pg_cluster_instance_type" {
@@ -46,8 +22,8 @@ variable "pg_cluster_instance_type" {
   default     = "t3.medium"
 }
 
-variable "db_instance_class" {
-  description = "RDS instance class"
+variable "ec2_key_name" {
+  description = "Existing EC2 key pair name for SSH access (leave empty to use SSM only)"
   type        = string
-  default     = "db.t3.micro"
+  default     = ""
 }

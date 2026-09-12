@@ -1,52 +1,61 @@
 ############################
-# Security Group — PostgreSQL Cluster
+# Latest Amazon Linux 2023 AMI
+############################
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+############################
+# Security Group
 ############################
 resource "aws_security_group" "pg_cluster" {
-  name        = "${var.project_name}-pg-cluster-sg"
-  description = "Security group for PostgreSQL cluster nodes"
+  name        = "${var.project_name}-sg"
+  description = "PostgreSQL cluster security group"
   vpc_id      = aws_vpc.main.id
 
-  # PostgreSQL between cluster nodes (replication)
+  # SSH from internet (restrict to your IP in production)
   ingress {
-    description = "PostgreSQL replication between cluster nodes"
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # PostgreSQL between cluster nodes and external clients
+  ingress {
+    description = "PostgreSQL"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    self        = true
-  }
-
-  # PostgreSQL from app EC2
-  ingress {
-    description     = "PostgreSQL from app EC2"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ec2.id]
-  }
-
-  # PostgreSQL from Lambda
-  ingress {
-    description     = "PostgreSQL from Lambda"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lambda.id]
-  }
-
-  # SSH from app EC2 for management
-  ingress {
-    description     = "SSH from app EC2"
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ec2.id]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # Patroni REST API between cluster nodes
   ingress {
-    description = "Patroni REST API between cluster nodes"
+    description = "Patroni REST API (inter-node)"
     from_port   = 8008
     to_port     = 8008
+    protocol    = "tcp"
+    self        = true
+  }
+
+  # etcd between cluster nodes
+  ingress {
+    description = "etcd client (inter-node)"
+    from_port   = 2379
+    to_port     = 2380
     protocol    = "tcp"
     self        = true
   }
@@ -58,14 +67,14 @@ resource "aws_security_group" "pg_cluster" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${var.project_name}-pg-cluster-sg" }
+  tags = { Name = "${var.project_name}-sg" }
 }
 
 ############################
-# IAM Role for PG Cluster EC2 (SSM access)
+# IAM Role — SSM + Secrets Manager access
 ############################
 resource "aws_iam_role" "pg_cluster" {
-  name = "${var.project_name}-pg-cluster-role"
+  name = "${var.project_name}-ec2-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -77,54 +86,48 @@ resource "aws_iam_role" "pg_cluster" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "pg_cluster_ssm" {
+resource "aws_iam_role_policy_attachment" "ssm" {
   role       = aws_iam_role.pg_cluster.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_role_policy_attachment" "pg_cluster_secrets" {
-  role       = aws_iam_role.pg_cluster.name
-  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
-}
-
 resource "aws_iam_instance_profile" "pg_cluster" {
-  name = "${var.project_name}-pg-cluster-profile"
+  name = "${var.project_name}-ec2-profile"
   role = aws_iam_role.pg_cluster.name
 }
 
 ############################
 # 3 EC2 Instances — PostgreSQL Cluster
-# Node 0 = Primary, Nodes 1 & 2 = Replicas
-# Distributed across 2 private subnets
+# Node 0 = Primary | Nodes 1 & 2 = Replicas
+# Distributed across 2 public subnets
 ############################
 resource "aws_instance" "pg_cluster" {
-  count                  = 3
-  ami                    = data.aws_ami.amazon_linux.id
-  instance_type          = var.pg_cluster_instance_type
-  subnet_id              = aws_subnet.private[count.index % 2].id
-  vpc_security_group_ids = [aws_security_group.pg_cluster.id]
-  iam_instance_profile   = aws_iam_instance_profile.pg_cluster.name
-  key_name               = var.ec2_key_name != "" ? var.ec2_key_name : null
+  count                       = 3
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = var.pg_cluster_instance_type
+  subnet_id                   = aws_subnet.public[count.index % 2].id
+  vpc_security_group_ids      = [aws_security_group.pg_cluster.id]
+  iam_instance_profile        = aws_iam_instance_profile.pg_cluster.name
+  associate_public_ip_address = true
+  key_name                    = var.ec2_key_name != "" ? var.ec2_key_name : null
 
   user_data = <<-EOF
     #!/bin/bash
     set -e
     dnf update -y
-    dnf install -y postgresql17-server postgresql17 python3 python3-pip
+    dnf install -y postgresql17-server postgresql17 python3 python3-pip gcc python3-devel
 
-    # Install Patroni for HA clustering
-    pip3 install patroni[etcd] boto3 psycopg2-binary
+    # Install Patroni with etcd support
+    pip3 install patroni[etcd] psycopg2-binary
 
-    # Initialize PostgreSQL data directory (primary node only handled by Patroni)
-    export PGDATA=/var/lib/pgsql/17/data
-    mkdir -p $PGDATA
-    chown postgres:postgres $PGDATA
-
-    # Tag this node
-    NODE_ROLE="${count.index == 0 ? "primary" : "replica-${count.index}"}"
-    echo "NODE_ROLE=$NODE_ROLE" >> /etc/environment
-    echo "CLUSTER_NAME=${var.project_name}-pg-cluster" >> /etc/environment
+    # Set node identity
     echo "NODE_NAME=pg-node-${count.index}" >> /etc/environment
+    echo "NODE_ROLE=${count.index == 0 ? "primary" : "replica"}" >> /etc/environment
+    echo "CLUSTER_NAME=${var.project_name}" >> /etc/environment
+
+    # Initialize PostgreSQL data directory
+    /usr/bin/postgresql-setup --initdb || true
+    chown -R postgres:postgres /var/lib/pgsql
   EOF
 
   root_block_device {
@@ -135,7 +138,7 @@ resource "aws_instance" "pg_cluster" {
   }
 
   tags = {
-    Name = "${var.project_name}-pg-${count.index == 0 ? "primary" : "replica-${count.index}"}"
+    Name = "${var.project_name}-node-${count.index == 0 ? "primary" : "replica-${count.index}"}"
     Role = count.index == 0 ? "primary" : "replica"
   }
 }

@@ -3,44 +3,13 @@ output "vpc_id" {
   value       = aws_vpc.main.id
 }
 
-output "public_subnet_ids" {
-  description = "Public subnet IDs"
-  value       = aws_subnet.public[*].id
-}
-
-output "private_subnet_ids" {
-  description = "Private subnet IDs"
-  value       = aws_subnet.private[*].id
-}
-
-output "ec2_instance_id" {
-  description = "EC2 instance ID"
-  value       = aws_instance.main.id
-}
-
-output "ec2_public_ip" {
-  description = "EC2 public IP address"
-  value       = aws_instance.main.public_ip
-}
-
-output "ec2_public_dns" {
-  description = "EC2 public DNS"
-  value       = aws_instance.main.public_dns
-}
-
-output "rds_endpoint" {
-  description = "RDS PostgreSQL endpoint"
-  value       = aws_db_instance.postgresql.endpoint
-}
-
-output "rds_port" {
-  description = "RDS port"
-  value       = aws_db_instance.postgresql.port
-}
-
-output "rds_db_name" {
-  description = "RDS database name"
-  value       = aws_db_instance.postgresql.db_name
+output "pg_cluster_public_ips" {
+  description = "Public IPs of the PostgreSQL cluster nodes"
+  value = {
+    primary   = aws_instance.pg_cluster[0].public_ip
+    replica_1 = aws_instance.pg_cluster[1].public_ip
+    replica_2 = aws_instance.pg_cluster[2].public_ip
+  }
 }
 
 output "pg_cluster_private_ips" {
@@ -53,26 +22,15 @@ output "pg_cluster_private_ips" {
 }
 
 output "pg_cluster_instance_ids" {
-  description = "Instance IDs of the PostgreSQL cluster nodes"
+  description = "Instance IDs"
   value       = aws_instance.pg_cluster[*].id
 }
 
-output "rds_secret_arn" {
-  description = "ARN of the Secrets Manager secret holding RDS credentials"
-  value       = aws_secretsmanager_secret.rds.arn
-}
-
-output "rds_secret_name" {
-  description = "Name of the Secrets Manager secret holding RDS credentials"
-  value       = aws_secretsmanager_secret.rds.name
-}
-
-output "lambda_function_name" {
-  description = "Lambda function name"
-  value       = aws_lambda_function.list_resources.function_name
-}
-
-output "lambda_function_arn" {
-  description = "Lambda function ARN"
-  value       = aws_lambda_function.list_resources.arn
+output "ssm_connect_commands" {
+  description = "AWS SSM commands to connect to each node (no SSH key needed)"
+  value = {
+    primary   = "aws ssm start-session --target ${aws_instance.pg_cluster[0].id} --region ${var.aws_region}"
+    replica_1 = "aws ssm start-session --target ${aws_instance.pg_cluster[1].id} --region ${var.aws_region}"
+    replica_2 = "aws ssm start-session --target ${aws_instance.pg_cluster[2].id} --region ${var.aws_region}"
+  }
 }
