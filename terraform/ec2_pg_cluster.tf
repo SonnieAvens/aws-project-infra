@@ -128,13 +128,18 @@ resource "aws_instance" "pg_cluster" {
 
   user_data = <<-EOF
     #!/bin/bash
-    # Bootstrap v2 — install packages only, Patroni configured via SSM
+    # Bootstrap v3
     exec > /var/log/pg-bootstrap.log 2>&1
 
     echo "=== Starting bootstrap: node ${count.index} ==="
 
-    dnf update -y
+    # Update only security packages, not openssh/kernel to avoid breaking SSH
+    dnf update -y --security --exclude=openssh* --exclude=kernel*
     dnf install -y postgresql17-server postgresql17 python3 python3-pip gcc python3-devel
+
+    # Restart SSH and EC2 Instance Connect after any updates
+    systemctl restart sshd
+    systemctl restart ec2-instance-connect || true
 
     # Install etcd from GitHub releases (not in AL2023 repos)
     ETCD_VER=v3.5.13
