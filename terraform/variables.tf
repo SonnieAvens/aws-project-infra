@@ -40,6 +40,12 @@ variable "db_username" {
   default     = "dbadmin"
 }
 
+variable "db_engine_version" {
+  description = "PostgreSQL engine version. Check available: aws rds describe-db-engine-versions --engine postgres --query \"DBEngineVersions[?starts_with(EngineVersion,'17')].EngineVersion\""
+  type        = string
+  default     = "17.4"
+}
+
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string

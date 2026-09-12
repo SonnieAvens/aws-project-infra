@@ -82,7 +82,7 @@ resource "aws_secretsmanager_secret_version" "rds" {
 resource "aws_db_instance" "postgresql" {
   identifier        = "${var.project_name}-postgres"
   engine            = "postgres"
-  engine_version    = "17.2"
+  engine_version    = var.db_engine_version
   instance_class    = var.db_instance_class
   allocated_storage = 20
   storage_type      = "gp3"
