@@ -22,6 +22,15 @@ resource "aws_security_group" "rds" {
     security_groups = [aws_security_group.lambda.id]
   }
 
+  # Public access for pgAdmin / external tools — restrict to your IP in production
+  ingress {
+    description = "PostgreSQL public access"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -33,11 +42,11 @@ resource "aws_security_group" "rds" {
 }
 
 ############################
-# DB Subnet Group
+# DB Subnet Group (public subnets — required for publicly_accessible = true)
 ############################
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-db-subnet-group"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = aws_subnet.public[*].id
 
   tags = { Name = "${var.project_name}-db-subnet-group" }
 }
@@ -102,7 +111,7 @@ resource "aws_db_instance" "postgresql" {
   vpc_security_group_ids = [aws_security_group.rds.id]
 
   multi_az               = false
-  publicly_accessible    = false
+  publicly_accessible    = true
   skip_final_snapshot    = true
   deletion_protection    = false
 
