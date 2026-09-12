@@ -24,13 +24,13 @@ resource "aws_security_group" "pg_cluster" {
   description = "PostgreSQL cluster security group"
   vpc_id      = aws_vpc.main.id
 
-  # SSH from internet (restrict to your IP in production)
+  # SSH + EC2 Instance Connect (us-east-1 range: 18.206.107.24/29)
   ingress {
-    description = "SSH"
+    description = "SSH and EC2 Instance Connect"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0", "18.206.107.24/29"]
   }
 
   # PostgreSQL between cluster nodes and external clients
@@ -302,6 +302,9 @@ resource "aws_instance" "pg_cluster" {
     encrypted             = true
     delete_on_termination = true
   }
+
+  # Force recreation when user_data changes so bootstrap script reruns
+  user_data_replace_on_change = true
 
   tags = {
     Name = "${var.project_name}-node-${count.index == 0 ? "primary" : "replica-${count.index}"}"
