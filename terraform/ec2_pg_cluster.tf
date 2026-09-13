@@ -105,7 +105,7 @@ resource "aws_iam_instance_profile" "pg" {
 }
 
 ############################
-# EC2 — PostgreSQL Practice Instance
+# EC2 — Blue (existing PostgreSQL instance)
 ############################
 resource "aws_instance" "pg" {
   ami                         = data.aws_ami.amazon_linux.id
@@ -139,5 +139,46 @@ resource "aws_instance" "pg" {
     delete_on_termination = true
   }
 
-  tags = { Name = "${var.project_name}-instance" }
+  tags = { Name = "${var.project_name}-blue" }
+}
+
+############################
+# EC2 — Green (PostgreSQL 18 target instance)
+############################
+resource "aws_instance" "pg_green" {
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.public[0].id
+  vpc_security_group_ids      = [aws_security_group.pg.id]
+  iam_instance_profile        = aws_iam_instance_profile.pg.name
+  key_name                    = aws_key_pair.pg.key_name
+  associate_public_ip_address = true
+  user_data_replace_on_change = true
+
+  user_data = <<-EOF
+    #!/bin/bash
+    exec > /var/log/pg-bootstrap.log 2>&1
+    echo "=== Installing PostgreSQL 18 ==="
+    dnf install -y postgresql18-server postgresql18
+    postgresql-setup --initdb
+    systemctl enable postgresql
+    systemctl start postgresql
+    # Allow password auth, remote connections, and logical replication
+    sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /var/lib/pgsql/data/postgresql.conf
+    sed -i "s/#wal_level = replica/wal_level = logical/" /var/lib/pgsql/data/postgresql.conf
+    sed -i 's/ident/md5/g; s/scram-sha-256/md5/g' /var/lib/pgsql/data/pg_hba.conf
+    echo "host all all 0.0.0.0/0 md5" >> /var/lib/pgsql/data/pg_hba.conf
+    echo "host replication all 0.0.0.0/0 md5" >> /var/lib/pgsql/data/pg_hba.conf
+    systemctl restart postgresql
+    echo "=== PostgreSQL 18 ready ==="
+  EOF
+
+  root_block_device {
+    volume_size           = 30
+    volume_type           = "gp3"
+    encrypted             = true
+    delete_on_termination = true
+  }
+
+  tags = { Name = "${var.project_name}-green" }
 }

@@ -3,19 +3,34 @@ output "vpc_id" {
   value       = aws_vpc.main.id
 }
 
-output "instance_id" {
-  description = "EC2 instance ID"
+output "blue_instance_id" {
+  description = "Blue EC2 instance ID"
   value       = aws_instance.pg.id
 }
 
-output "public_ip" {
-  description = "EC2 public IP address"
+output "blue_public_ip" {
+  description = "Blue EC2 public IP address"
   value       = aws_instance.pg.public_ip
 }
 
-output "ssh_command" {
-  description = "SSH command to connect to the instance"
+output "blue_ssh_command" {
+  description = "SSH command to connect to blue instance"
   value       = "ssh -i pg-practice-key.pem ec2-user@${aws_instance.pg.public_ip}"
+}
+
+output "green_instance_id" {
+  description = "Green EC2 instance ID"
+  value       = aws_instance.pg_green.id
+}
+
+output "green_public_ip" {
+  description = "Green EC2 public IP address"
+  value       = aws_instance.pg_green.public_ip
+}
+
+output "green_ssh_command" {
+  description = "SSH command to connect to green instance"
+  value       = "ssh -i pg-practice-key.pem ec2-user@${aws_instance.pg_green.public_ip}"
 }
 
 output "get_ssh_key_command" {
