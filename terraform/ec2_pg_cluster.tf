@@ -17,47 +17,55 @@ data "aws_ami" "amazon_linux" {
 }
 
 ############################
+# SSH Key Pair (auto-generated, private key in Secrets Manager)
+############################
+resource "tls_private_key" "ssh" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "pg" {
+  key_name   = "${var.project_name}-key"
+  public_key = tls_private_key.ssh.public_key_openssh
+
+  tags = { Name = "${var.project_name}-key" }
+}
+
+resource "aws_secretsmanager_secret" "ssh_key" {
+  name                    = "${var.project_name}/ec2/ssh-private-key"
+  description             = "SSH private key for ${var.project_name} EC2 instance"
+  recovery_window_in_days = 0
+
+  tags = { Name = "${var.project_name}-ssh-key" }
+}
+
+resource "aws_secretsmanager_secret_version" "ssh_key" {
+  secret_id     = aws_secretsmanager_secret.ssh_key.id
+  secret_string = tls_private_key.ssh.private_key_pem
+}
+
+############################
 # Security Group
 ############################
-resource "aws_security_group" "pg_cluster" {
+resource "aws_security_group" "pg" {
   name        = "${var.project_name}-sg"
-  description = "PostgreSQL cluster security group"
+  description = "PostgreSQL practice instance"
   vpc_id      = aws_vpc.main.id
 
-  # SSH + EC2 Instance Connect (us-east-1 range: 18.206.107.24/29)
   ingress {
-    description = "SSH and EC2 Instance Connect"
+    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0", "18.206.107.24/29"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # PostgreSQL between cluster nodes and external clients
   ingress {
     description = "PostgreSQL"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Patroni REST API between cluster nodes
-  ingress {
-    description = "Patroni REST API (inter-node)"
-    from_port   = 8008
-    to_port     = 8008
-    protocol    = "tcp"
-    self        = true
-  }
-
-  # etcd between cluster nodes
-  ingress {
-    description = "etcd client (inter-node)"
-    from_port   = 2379
-    to_port     = 2380
-    protocol    = "tcp"
-    self        = true
   }
 
   egress {
@@ -71,9 +79,9 @@ resource "aws_security_group" "pg_cluster" {
 }
 
 ############################
-# IAM Role — SSM + Secrets Manager access
+# IAM Role for SSM access
 ############################
-resource "aws_iam_role" "pg_cluster" {
+resource "aws_iam_role" "pg" {
   name = "${var.project_name}-ec2-role"
 
   assume_role_policy = jsonencode({
@@ -87,93 +95,49 @@ resource "aws_iam_role" "pg_cluster" {
 }
 
 resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.pg_cluster.name
+  role       = aws_iam_role.pg.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Allow EC2 nodes to discover cluster peers by tag
-resource "aws_iam_role_policy" "ec2_describe" {
-  name = "${var.project_name}-ec2-describe"
-  role = aws_iam_role.pg_cluster.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ec2:DescribeInstances"]
-      Resource = "*"
-    }]
-  })
-}
-
-resource "aws_iam_instance_profile" "pg_cluster" {
+resource "aws_iam_instance_profile" "pg" {
   name = "${var.project_name}-ec2-profile"
-  role = aws_iam_role.pg_cluster.name
+  role = aws_iam_role.pg.name
 }
 
 ############################
-# 3 EC2 Instances — PostgreSQL Cluster
-# Node 0 = Primary | Nodes 1 & 2 = Replicas
-# Distributed across 2 public subnets
+# EC2 — PostgreSQL Practice Instance
 ############################
-resource "aws_instance" "pg_cluster" {
-  count                       = 3
+resource "aws_instance" "pg" {
   ami                         = data.aws_ami.amazon_linux.id
-  instance_type               = var.pg_cluster_instance_type
-  subnet_id                   = aws_subnet.public[count.index % 2].id
-  vpc_security_group_ids      = [aws_security_group.pg_cluster.id]
-  iam_instance_profile        = aws_iam_instance_profile.pg_cluster.name
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.public[0].id
+  vpc_security_group_ids      = [aws_security_group.pg.id]
+  iam_instance_profile        = aws_iam_instance_profile.pg.name
+  key_name                    = aws_key_pair.pg.key_name
   associate_public_ip_address = true
-  key_name                    = var.ec2_key_name != "" ? var.ec2_key_name : null
+  user_data_replace_on_change = true
 
   user_data = <<-EOF
     #!/bin/bash
-    # Bootstrap v3
     exec > /var/log/pg-bootstrap.log 2>&1
-
-    echo "=== Starting bootstrap: node ${count.index} ==="
-
-    # Update only security packages, not openssh/kernel to avoid breaking SSH
-    dnf update -y --security --exclude=openssh* --exclude=kernel*
-    dnf install -y postgresql17-server postgresql17 python3 python3-pip gcc python3-devel
-
-    # Restart SSH and EC2 Instance Connect after any updates
-    systemctl restart sshd
-    systemctl restart ec2-instance-connect || true
-
-    # Install etcd from GitHub releases (not in AL2023 repos)
-    ETCD_VER=v3.5.13
-    curl -fsSL https://github.com/etcd-io/etcd/releases/download/$${ETCD_VER}/etcd-$${ETCD_VER}-linux-amd64.tar.gz \
-      | tar -xz -C /usr/local/bin --strip-components=1 etcd-$${ETCD_VER}-linux-amd64/etcd etcd-$${ETCD_VER}-linux-amd64/etcdctl
-
-    # Install Patroni
-    pip3 install patroni[etcd3] psycopg2-binary
-
-    # Ensure SSM agent is running
-    systemctl enable amazon-ssm-agent
-    systemctl restart amazon-ssm-agent
-
-    # Set node identity for reference
-    echo "NODE_INDEX=${count.index}" >> /etc/environment
-    echo "NODE_NAME=pg-node-${count.index}" >> /etc/environment
-    echo "CLUSTER_NAME=${var.project_name}" >> /etc/environment
-    echo "AWS_REGION=${var.aws_region}" >> /etc/environment
-
-    echo "=== Bootstrap complete. Connect via SSM to configure Patroni. ==="
+    echo "=== Installing PostgreSQL 17 ==="
+    dnf install -y postgresql17-server postgresql17
+    postgresql-setup --initdb
+    systemctl enable postgresql
+    systemctl start postgresql
+    # Allow password auth and remote connections
+    sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /var/lib/pgsql/data/postgresql.conf
+    echo "host all all 0.0.0.0/0 md5" >> /var/lib/pgsql/data/pg_hba.conf
+    systemctl restart postgresql
+    echo "=== PostgreSQL 17 ready ==="
   EOF
 
   root_block_device {
-    volume_size           = 50
+    volume_size           = 30
     volume_type           = "gp3"
     encrypted             = true
     delete_on_termination = true
   }
 
-  # Force recreation when user_data changes so bootstrap script reruns
-  user_data_replace_on_change = true
-
-  tags = {
-    Name = "${var.project_name}-node-${count.index == 0 ? "primary" : "replica-${count.index}"}"
-    Role = count.index == 0 ? "primary" : "replica"
-  }
+  tags = { Name = "${var.project_name}-instance" }
 }

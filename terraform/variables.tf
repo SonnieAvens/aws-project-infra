@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name used as prefix for all resource names"
   type        = string
-  default     = "pg-cluster"
+  default     = "pg-practice"
 }
 
 variable "environment" {
@@ -16,14 +16,8 @@ variable "environment" {
   default     = "dev"
 }
 
-variable "pg_cluster_instance_type" {
-  description = "EC2 instance type for PostgreSQL cluster nodes"
+variable "instance_type" {
+  description = "EC2 instance type"
   type        = string
   default     = "t3.medium"
-}
-
-variable "ec2_key_name" {
-  description = "Existing EC2 key pair name for SSH access (leave empty to use SSM only)"
-  type        = string
-  default     = ""
 }

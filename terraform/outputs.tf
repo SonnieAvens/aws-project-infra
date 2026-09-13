@@ -3,34 +3,27 @@ output "vpc_id" {
   value       = aws_vpc.main.id
 }
 
-output "pg_cluster_public_ips" {
-  description = "Public IPs of the PostgreSQL cluster nodes"
-  value = {
-    primary   = aws_instance.pg_cluster[0].public_ip
-    replica_1 = aws_instance.pg_cluster[1].public_ip
-    replica_2 = aws_instance.pg_cluster[2].public_ip
-  }
+output "instance_id" {
+  description = "EC2 instance ID"
+  value       = aws_instance.pg.id
 }
 
-output "pg_cluster_private_ips" {
-  description = "Private IPs of the PostgreSQL cluster nodes"
-  value = {
-    primary   = aws_instance.pg_cluster[0].private_ip
-    replica_1 = aws_instance.pg_cluster[1].private_ip
-    replica_2 = aws_instance.pg_cluster[2].private_ip
-  }
+output "public_ip" {
+  description = "EC2 public IP address"
+  value       = aws_instance.pg.public_ip
 }
 
-output "pg_cluster_instance_ids" {
-  description = "Instance IDs"
-  value       = aws_instance.pg_cluster[*].id
+output "ssh_command" {
+  description = "SSH command to connect to the instance"
+  value       = "ssh -i pg-practice-key.pem ec2-user@${aws_instance.pg.public_ip}"
 }
 
-output "ssm_connect_commands" {
-  description = "AWS SSM commands to connect to each node (no SSH key needed)"
-  value = {
-    primary   = "aws ssm start-session --target ${aws_instance.pg_cluster[0].id} --region ${var.aws_region}"
-    replica_1 = "aws ssm start-session --target ${aws_instance.pg_cluster[1].id} --region ${var.aws_region}"
-    replica_2 = "aws ssm start-session --target ${aws_instance.pg_cluster[2].id} --region ${var.aws_region}"
-  }
+output "get_ssh_key_command" {
+  description = "Command to download the SSH private key"
+  value       = "aws secretsmanager get-secret-value --secret-id ${aws_secretsmanager_secret.ssh_key.name} --region ${var.aws_region} --query SecretString --output text > pg-practice-key.pem && chmod 400 pg-practice-key.pem"
+}
+
+output "ssh_key_secret_name" {
+  description = "Secrets Manager secret name holding the SSH private key"
+  value       = aws_secretsmanager_secret.ssh_key.name
 }
